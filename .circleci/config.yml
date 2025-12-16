@@ -61,7 +61,7 @@ jobs:
               exit 1
             fi
             echo "$CIRCLE_OIDC_TOKEN" > /tmp/oidc_token
-
+            echo "//iam.googleapis.com/projects/'"${GCP_PROJECT_NUMBER}"'/locations/global/workloadIdentityPools/'"${WIF_POOL_ID}"'/providers/'"${WIF_PROVIDER_ID}"'"
             # External account JSON for GCP Workload Identity Federation
             printf '%s' '{
               "type": "external_account",
