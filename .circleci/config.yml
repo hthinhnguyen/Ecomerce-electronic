@@ -86,7 +86,7 @@ jobs:
             gcloud auth print-access-token >/dev/null
             echo "OK."
 
-        - run:
+      - run:
           name: "Example: call a readonly API"
           command: |
             # Replace with calls your pipeline needs under RO/RW contexts
