@@ -1,0 +1,100 @@
+version: 2.1
+
+# Minimal workflow: one job authenticates to GCP via OIDC (WIF)
+# Bots (github-actions[bot] / github-copilot) impersonate SA_RO, others use SA_RW.
+
+parameters:
+  gcp_project_number:
+    type: string
+    default: "149536110504" # <-- replace via pipeline params or project env vars
+  wif_pool_id:
+    type: string
+    default: "circleci"
+  wif_provider_id:
+    type: string
+    default: "my-repo-oidc"
+  sa_ro_email:
+    type: string
+    default: "service-account-ro@example-thinh0163-project.iam.gserviceaccount.com"
+  sa_rw_email:
+    type: string
+    default: "service-account-rw@example-thinh0163-project.iam.gserviceaccount.com"
+
+jobs:
+  gcp-oidc-auth:
+    docker:
+      - image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    resource_class: small
+    # Enable CircleCI OIDC for this job
+    oidc: true
+    environment:
+      GCP_PROJECT_NUMBER: << pipeline.parameters.gcp_project_number >>
+      WIF_POOL_ID: << pipeline.parameters.wif_pool_id >>
+      WIF_PROVIDER_ID: << pipeline.parameters.wif_provider_id >>
+      SA_RO_EMAIL: << pipeline.parameters.sa_ro_email >>
+      SA_RW_EMAIL: << pipeline.parameters.sa_rw_email >>
+    steps:
+      - checkout
+
+      - run:
+          name: Show CircleCI actor info
+          command: |
+            echo "CIRCLE_USERNAME=${CIRCLE_USERNAME}"
+            echo "CIRCLE_PROJECT_REPONAME=${CIRCLE_PROJECT_REPONAME}"
+            echo "CIRCLE_PROJECT_USERNAME=${CIRCLE_PROJECT_USERNAME}"
+
+      - run:
+          name: Authenticate to GCP using OIDC (WIF)
+          command: |
+            set -euo pipefail
+
+            # Select SA based on actor
+            ACTOR="${CIRCLE_USERNAME:-unknown}"
+            SA_EMAIL="$SA_RW_EMAIL"
+            if [ "$ACTOR" = "github-actions[bot]" ] || [ "$ACTOR" = "github-copilot[bot]" ] || [ "$ACTOR" = "github-copilot" ]; then
+              SA_EMAIL="$SA_RO_EMAIL"
+            fi
+            echo "Actor: $ACTOR -> impersonating $SA_EMAIL"
+
+            # CircleCI provides an OIDC ID token to this job when oidc: true
+            if [ -z "${CIRCLE_OIDC_TOKEN:-}" ]; then
+              echo "CIRCLE_OIDC_TOKEN is empty. Ensure 'oidc: true' and project has OIDC enabled." >&2
+              exit 1
+            fi
+            echo "$CIRCLE_OIDC_TOKEN" > /tmp/oidc_token
+
+            # External account JSON for GCP Workload Identity Federation
+            cat > /tmp/wif.json <<JSON
+            {
+              "type": "external_account",
+              "audience": "//iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${WIF_POOL_ID}/providers/${WIF_PROVIDER_ID}",
+              "subject_token_type": "urn:ietf:params:oauth:token-type:id_token",
+              "token_url": "https://sts.googleapis.com/v1/token",
+              "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${SA_EMAIL}:generateAccessToken",
+              "credential_source": {
+                "file": "/tmp/oidc_token",
+                "format": { "type": "text" }
+              }
+            }
+JSON
+
+            # Authenticate gcloud using the external account JSON
+            gcloud auth login --cred-file=/tmp/wif.json
+
+            echo "Authenticated accounts:"
+            gcloud auth list
+
+            echo "Verifying access token can be minted..."
+            gcloud auth print-access-token >/dev/null
+            echo "OK."
+
+      - run:
+          name: Example: call a readonly API
+          command: |
+            # Replace with calls your pipeline needs under RO/RW contexts
+            gcloud projects get-iam-policy $(gcloud config get-value project 2>/dev/null || true) --quiet || true
+
+workflows:
+  oidc-only:
+    jobs:
+      - gcp-oidc-auth
