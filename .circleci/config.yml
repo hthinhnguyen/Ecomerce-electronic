@@ -86,8 +86,8 @@ jobs:
             gcloud auth print-access-token >/dev/null
             echo "OK."
 
-      - run:
-          name: Example: call a readonly API
+        - run:
+          name: "Example: call a readonly API"
           command: |
             # Replace with calls your pipeline needs under RO/RW contexts
             gcloud projects get-iam-policy $(gcloud config get-value project 2>/dev/null || true) --quiet || true
