@@ -25,8 +25,7 @@ jobs:
     docker:
       - image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
     resource_class: small
-    # Enable CircleCI OIDC for this job
-    oidc: true
+    # OIDC is enabled at project/org level; no job key required
     environment:
       GCP_PROJECT_NUMBER: << pipeline.parameters.gcp_project_number >>
       WIF_POOL_ID: << pipeline.parameters.wif_pool_id >>
